@@ -1,0 +1,136 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Resources:
+  beanstalkapp:
+    Type: AWS::ElasticBeanstalk::Application
+    Properties:
+      ApplicationName: beanstalk-flask-app-project
+      Description: "AWS Elasticbeanslk site flask app project"      
+  beanstalkappver:
+    Type: AWS::ElasticBeanstalk::ApplicationVersion
+    Properties:
+      ApplicationName: !Ref beanstalkapp
+      SourceBundle:
+        S3Bucket: beanstalk-source-bundle
+        S3Key: awsmehdidockerproject.zip
+  beanstalktemplate:
+    Type: AWS::ElasticBeanstalk::ConfigurationTemplate
+    Properties:
+      ApplicationName: !Ref beanstalkapp
+      OptionSettings:
+        - Namespace: aws:elasticbeanstalk:environment
+          OptionName: EnvironmentType
+          Value: LoadBalanced
+        - Namespace: aws:elasticbeanstalk:environment
+          OptionName: LoadBalancerType
+          Value: network
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: IamInstanceProfile
+          Value: iam-instance-profile
+        - Namespace: aws:elasticbeanstalk:environment
+          OptionName: ServiceRole
+          Value: aws-elasticbeanstalk-service-role
+        - Namespace: aws:elb:loadbalancer
+          OptionName: CrossZone
+          Value: yes
+      SolutionStackName: "64bit Amazon Linux 2018.03 v2.12.5 running Docker 18.06.1-ce"
+  beanstalkenv:
+    Type: AWS::ElasticBeanstalk::Environment
+    Properties:
+      ApplicationName: !Ref beanstalkapp
+      EnvironmentName: beanstalk-project-environment
+      Tier:
+        Name: WebServer
+        Type: Standard
+      TemplateName: !Ref beanstalktemplate
+      VersionLabel: !Ref beanstalkappver
+
+  beanstalkiamrole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: beanstalkiamrole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "codepipeline.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/AWSCodeCommitFullAccess
+        - arn:aws:iam::aws:policy/AWSCodeBuildAdminAccess
+        - arn:aws:iam::aws:policy/AWSElasticBeanstalkFullAccess
+  
+  beanstalkbucketmehdi:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: beanstalkbucketmehdi
+
+  beanstalkpipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      ArtifactStore:
+        Type: S3
+        Location: !Ref beanstalkbucketmehdi
+      Name: beanstalk-site-pipeline
+      RoleArn: !GetAtt beanstalkiamrole.Arn
+      Stages:
+        -
+          Name: Source
+          Actions:
+            -
+              Name: SourceAction
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: 1
+                Provider: CodeCommit
+              Configuration:
+                RepositoryName: beanstalk-site-repo
+                BranchName: master
+              OutputArtifacts:
+                -
+                  Name: SourceOutputArtifact
+
+        -
+          Name: Build
+          Actions:
+            -
+              Name: BuildAction
+              InputArtifacts:
+               -
+                  Name: SourceOutputArtifact
+
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: 1
+              Configuration:
+                ProjectName: beanstalk-build
+              OutputArtifacts:
+                -
+                  Name: BuildOutputArtifact
+        -
+          Name: Deploy
+          Actions:
+            -
+              Name: DeployAction
+              InputArtifacts:
+                -
+                  Name: BuildOutputArtifact
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: ElasticBeanstalk
+              Configuration:
+                ApplicationName: !Ref beanstalkapp
+                EnvironmentName: !Ref beanstalkenv
+        
+
+
