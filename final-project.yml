@@ -4,7 +4,7 @@ Resources:
     Type: AWS::ElasticBeanstalk::Application
     Properties:
       ApplicationName: beanstalk-flask-app-project
-      Description: "AWS Elasticbeanslk site flask app project"      
+      Description: "AWS Elasticbeanslk site flask app project"
   beanstalkappver:
     Type: AWS::ElasticBeanstalk::ApplicationVersion
     Properties:
@@ -64,7 +64,7 @@ Resources:
         - arn:aws:iam::aws:policy/AWSCodeCommitFullAccess
         - arn:aws:iam::aws:policy/AWSCodeBuildAdminAccess
         - arn:aws:iam::aws:policy/AWSElasticBeanstalkFullAccess
-  
+
   beanstalkbucketmehdi:
     Type: AWS::S3::Bucket
     Properties:
@@ -131,6 +131,87 @@ Resources:
               Configuration:
                 ApplicationName: !Ref beanstalkapp
                 EnvironmentName: !Ref beanstalkenv
-        
 
+  origindnsrecord:
+    Type: AWS::Route53::RecordSetGroup
+    Properties:
+      RecordSets:
+      - Name: origin.mehdiaws.com.
+        Type: A
+        AliasTarget:
+          DNSName: !GetAtt beanstalkenv.EndpointURL
+          HostedZoneId: "Z26RNL4JYFTOTI"
+      HostedZoneName: mehdiaws.com.
 
+  sthreedistro:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Aliases:
+        - static.mehdiaws.com
+        DefaultRootObject: index.html
+        Enabled: yes
+        DefaultCacheBehavior:
+          TargetOriginId: s3-static
+          ViewerProtocolPolicy: allow-all
+          ForwardedValues:
+            Cookies:
+              Forward: none
+            QueryString: false
+        Origins:
+        - DomainName: static.mehdiaws.com.s3-website-us-east-1.amazonaws.com
+          Id: s3-static
+          CustomOriginConfig:
+            HTTPPort: 80
+            HTTPSPort: 443
+            OriginProtocolPolicy: http-only
+        ViewerCertificate:
+          AcmCertificateArn: "arn:aws:acm:us-east-1:313060132730:certificate/f981a44d-8ee1-4a77-aac6-f30809dc7912"
+          SslSupportMethod: sni-only
+
+  origindistro:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Aliases:
+        - mehdiaws.com
+        Enabled: yes
+        DefaultCacheBehavior:
+          TargetOriginId: custom-origin
+          ViewerProtocolPolicy: allow-all
+          ForwardedValues:
+            Cookies:
+              Forward: none
+            QueryString: false
+        Origins:
+        - DomainName: origin.mehdiaws.com
+          Id: custom-origin
+          CustomOriginConfig:
+            HTTPPort: 80
+            HTTPSPort: 443
+            OriginProtocolPolicy: http-only
+        ViewerCertificate:
+          AcmCertificateArn: "arn:aws:acm:us-east-1:313060132730:certificate/f981a44d-8ee1-4a77-aac6-f30809dc7912"
+          SslSupportMethod: sni-only
+
+  s3dnsrecord:
+    Type: AWS::Route53::RecordSetGroup
+    Properties:
+      RecordSets:
+      - Name: static.mehdiaws.com.
+        Type: A
+        AliasTarget:
+          DNSName: !GetAtt sthreedistro.DomainName
+          HostedZoneId: Z2FDTNDATAQYW2
+      HostedZoneName: mehdiaws.com.
+
+  mehdiawsrecord:
+    Type: AWS::Route53::RecordSetGroup
+    Properties:
+      RecordSets:
+      - Name: mehdiaws.com.
+        Type: A
+        AliasTarget:
+          DNSName: !GetAtt origindistro.DomainName
+          HostedZoneId: Z2FDTNDATAQYW2
+      HostedZoneName: mehdiaws.com.
